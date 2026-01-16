@@ -1,40 +1,35 @@
-import os, json
-from flask import Flask, request, jsonify
-import firebase_admin
-from firebase_admin import credentials, messaging
+import os
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# Firebase init (HTTP v1)
-cred = credentials.Certificate(
-    json.loads(os.environ["FIREBASE_CREDENTIALS"])
-)
-firebase_admin.initialize_app(cred)
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret")
 
-@app.route("/")
-def home():
-    return "Payment Push API Running"
+CURRENT_ALERT = {
+    "title": "",
+    "message": "",
+    "active": False
+}
 
-@app.route("/push", methods=["POST"])
-def push():
+@app.route("/alert")
+def get_alert():
+    return jsonify(CURRENT_ALERT)
+
+@app.route("/set-alert", methods=["POST"])
+def set_alert():
+    key = request.headers.get("X-SECRET-KEY")
+    if key != SECRET_KEY:
+        return jsonify({"error": "unauthorized"}), 401
+
     data = request.json
+    CURRENT_ALERT["title"] = data.get("title", "Alert")
+    CURRENT_ALERT["message"] = data.get("message", "")
+    CURRENT_ALERT["active"] = data.get("active", True)
 
-    token = data.get("token")
-    message_text = data.get("message")
+    return jsonify({"status": "alert updated"})
 
-    if not token or not message_text:
-        return jsonify({"error": "token or message missing"}), 400
-
-    msg = messaging.Message(
-        notification=messaging.Notification(
-            title="Payment Alert ⚡",
-            body=message_text
-        ),
-        token=token
-    )
-
-    messaging.send(msg)
-    return jsonify({"status": "push sent"})
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)    return jsonify({"status": "push sent"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
