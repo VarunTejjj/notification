@@ -5,7 +5,7 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret")
+SECRET_KEY = os.environ.get("SECRET_KEY", "va_live_92kdkd92jd92jd")
 
 # =========================
 # GLOBAL ALERT STORAGE
@@ -15,7 +15,7 @@ CURRENT_ALERT = {
     "title": "",
     "message": "",
     "active": False,
-    "status": "pending"
+    "status": "pending"  # pending | approved | declined
 }
 
 # =========================
@@ -27,6 +27,10 @@ def read_json_file(filename, default):
             return json.load(f)
     except:
         return default
+
+def write_json_file(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=2)
 
 def read_lines(filename):
     try:
@@ -42,7 +46,9 @@ def read_lines(filename):
 def home():
     return "Alert + Stats API Running"
 
-# ---------- ALERT ----------
+# =========================
+# ALERT APIs
+# =========================
 @app.route("/alert", methods=["GET"])
 def get_alert():
     return jsonify(CURRENT_ALERT)
@@ -71,7 +77,26 @@ def clear_alert():
     CURRENT_ALERT["active"] = False
     return jsonify({"status": "cleared"})
 
-# ---------- STATS (NEW) ----------
+# =========================
+# PAYMENT LOGGING (BOT → API)
+# =========================
+@app.route("/log-payment", methods=["POST"])
+def log_payment_api():
+    key = request.headers.get("X-SECRET-KEY")
+    if key != SECRET_KEY:
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.json or {}
+
+    payments = read_json_file("payments.json", [])
+    payments.append(data)
+    write_json_file("payments.json", payments)
+
+    return jsonify({"status": "payment logged"})
+
+# =========================
+# STATS API (DASHBOARD)
+# =========================
 @app.route("/stats", methods=["GET"])
 def get_stats():
     payments = read_json_file("payments.json", [])
@@ -95,7 +120,7 @@ def get_stats():
 
         total_collection += amount
 
-        if today in p.get("time", ""):
+        if today in str(p.get("time", "")):
             today_collection += amount
 
         if p.get("coupon_type") == "500_off":
