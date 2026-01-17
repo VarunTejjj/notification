@@ -5,7 +5,10 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "va_live_92kdkd92jd92jd")
+# 🔐 SECRET KEY (ENV ONLY)
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable not set")
 
 # =========================
 # GLOBAL ALERT STORAGE
@@ -39,6 +42,9 @@ def read_lines(filename):
     except:
         return []
 
+def require_secret(req):
+    return req.headers.get("X-SECRET-KEY") == SECRET_KEY
+
 # =========================
 # ROUTES
 # =========================
@@ -55,8 +61,7 @@ def get_alert():
 
 @app.route("/set-alert", methods=["POST"])
 def set_alert():
-    key = request.headers.get("X-SECRET-KEY")
-    if key != SECRET_KEY:
+    if not require_secret(request):
         return jsonify({"error": "unauthorized"}), 401
 
     data = request.json or {}
@@ -67,23 +72,22 @@ def set_alert():
     CURRENT_ALERT["active"] = data.get("active", True)
     CURRENT_ALERT["status"] = data.get("status", "pending")
 
-    return jsonify({
-        "status": "alert updated",
-        "id": CURRENT_ALERT["id"]
-    })
+    return jsonify({"status": "alert updated", "id": CURRENT_ALERT["id"]})
 
 @app.route("/clear-alert", methods=["POST"])
 def clear_alert():
+    if not require_secret(request):
+        return jsonify({"error": "unauthorized"}), 401
+
     CURRENT_ALERT["active"] = False
-    return jsonify({"status": "cleared"})
+    return jsonify({"status": "alert cleared"})
 
 # =========================
 # PAYMENT LOGGING (BOT → API)
 # =========================
 @app.route("/log-payment", methods=["POST"])
 def log_payment_api():
-    key = request.headers.get("X-SECRET-KEY")
-    if key != SECRET_KEY:
+    if not require_secret(request):
         return jsonify({"error": "unauthorized"}), 401
 
     data = request.json or {}
@@ -93,6 +97,30 @@ def log_payment_api():
     write_json_file("payments.json", payments)
 
     return jsonify({"status": "payment logged"})
+
+# =========================
+# RESET PAYMENTS (ADMIN)
+# =========================
+@app.route("/reset-payments", methods=["POST"])
+def reset_payments():
+    if not require_secret(request):
+        return jsonify({"error": "unauthorized"}), 401
+
+    write_json_file("payments.json", [])
+    return jsonify({"status": "payments reset"})
+
+# =========================
+# RESET EVERYTHING (ADMIN)
+# =========================
+@app.route("/reset-all", methods=["POST"])
+def reset_all():
+    if not require_secret(request):
+        return jsonify({"error": "unauthorized"}), 401
+
+    write_json_file("payments.json", [])
+    CURRENT_ALERT["active"] = False
+
+    return jsonify({"status": "all data reset"})
 
 # =========================
 # STATS API (DASHBOARD)
@@ -137,7 +165,6 @@ def get_stats():
     return jsonify({
         "total_collection": total_collection,
         "today_collection": today_collection,
-
         "500OFF": {
             "sold": sold_500,
             "left": stock_500_left,
